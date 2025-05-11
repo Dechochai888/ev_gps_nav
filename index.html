@@ -1,136 +1,357 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>EV GPS นำทางมอเตอร์ไซค์ไฟฟ้า</title>
-  <style>
-    body, html {
-      margin: 0; padding: 0; height: 100%; font-family: sans-serif;
-    }
-    #map {
-      height: 85%; width: 100%;
-    }
-    #controls {
-      padding: 10px; background: #ffffff;
-      box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
-      position: sticky; top: 0; z-index: 999;
-    }
-    input, button {
-      padding: 8px; font-size: 16px; margin-right: 5px;
-    }
-    button {
-      background: #00b894; border: none; color: white;
-      border-radius: 4px; cursor: pointer;
-    }
-    button:hover {
-      background: #019875;
-    }
-    #info {
-      margin-top: 8px;
-      font-size: 14px;
-      line-height: 1.4;
-    }
-    #info span {
-      display: block;
-      margin-bottom: 4px;
-    }
-  </style>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#10B981" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
+<body class="bg-gray-100 flex flex-col h-screen">
 
-  <div id="controls">
-    <input id="destination" type="text" placeholder="กรอกปลายทาง เช่น CentralWorld" />
-    <button onclick="route()">นำทาง</button>
+  <!-- Turn-by-Turn Instruction Panel -->
+  <div id="instructionPanel" class="hidden bg-green-700 text-white flex items-center p-4 shadow-md">
+    <div id="instrArrow" class="text-3xl mr-4">↑</div>
+    <div id="instrText" class="flex-1 font-medium"></div>
+    <div id="instrDist" class="ml-4 text-sm opacity-90">– กม.</div>
+  </div>
 
-    <div id="info">
-      <span id="distance">ระยะทาง: –</span>
-      <span id="duration">เวลาเดินทาง: –</span>
-      <span id="energy">คาดการณ์พลังงาน: –</span>
+  <!-- Controls Panel -->
+  <div id="controls" class="bg-white shadow-md p-4 flex flex-wrap items-end gap-3">
+    <div class="flex-1 min-w-[200px]">
+      <label class="block text-sm font-semibold mb-1">ปลายทาง</label>
+      <input id="destination" type="text"
+             class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-green-500"
+             placeholder="เช่น CentralWorld"/>
+    </div>
+    <div class="min-w-[160px]">
+      <label class="block text-sm font-semibold mb-1">ความจุแบตฯ (Wh)</label>
+      <input id="capacityInput" type="number" min="0" value="2000"
+             class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-green-500"/>
+    </div>
+    <button onclick="route()"
+            class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg">
+      นำทาง
+    </button>
+    <button onclick="startNavigation()"
+            class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg">
+      เริ่มนำทาง
+    </button>
+    <button onclick="stopNavigation()"
+            class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg">
+      หยุดนำทาง
+    </button>
+    <button onclick="toggleHistory()"
+            class="bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg">
+      ประวัติการเดินทาง
+    </button>
+    <button onclick="toggleFavorites()"
+            class="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg">
+      เส้นทางโปรด
+    </button>
+
+    <!-- Info Cards -->
+    <div id="info" class="w-full grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">ระยะทาง</span>
+        <span id="distance" class="text-lg font-semibold">–</span>
+      </div>
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">เวลาเดินทาง</span>
+        <span id="duration" class="text-lg font-semibold">–</span>
+      </div>
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">ชันรวม</span>
+        <span id="elevationGain" class="text-lg font-semibold">– ม.</span>
+      </div>
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">ใช้พลังงาน</span>
+        <span id="energy" class="text-lg font-semibold">–</span>
+      </div>
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">แบตเตอรี่คงเหลือ</span>
+        <span id="remaining" class="text-lg font-semibold">–</span>
+      </div>
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">ความจุแบตฯ</span>
+        <span id="capacity" class="text-lg font-semibold">–</span>
+      </div>
+      <div class="bg-white p-3 rounded-lg shadow flex flex-col">
+        <span class="text-xs text-gray-500">อัตราใช้พลังฯ</span>
+        <span id="power" class="text-lg font-semibold">–</span>
+      </div>
+      <div class="col-span-full">
+        <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div id="gaugeFill" class="h-full bg-green-600 transition-all"></div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div id="map"></div>
+  <!-- Map Container -->
+  <div id="map" class="flex-1"></div>
+
+  <!-- History Modal -->
+  <div id="historyModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+    <div class="bg-white rounded-lg w-11/12 max-w-md p-4">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold">ประวัติการเดินทาง</h2>
+        <button onclick="toggleHistory()">✕</button>
+      </div>
+      <ul id="historyList" class="space-y-2 max-h-64 overflow-auto"></ul>
+    </div>
+  </div>
+
+  <!-- Favorites Modal -->
+  <div id="favModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center">
+    <div class="bg-white rounded-lg w-11/12 max-w-md p-4">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold">เส้นทางโปรด</h2>
+        <button onclick="toggleFavorites()">✕</button>
+      </div>
+      <button onclick="saveFavorite()"
+              class="mb-2 bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded">
+        บันทึกเส้นทางนี้เป็นโปรด
+      </button>
+      <ul id="favList" class="space-y-2 max-h-64 overflow-auto"></ul>
+    </div>
+  </div>
 
   <script>
-    let map, directionsService, directionsRenderer, currentPos;
+    // Core services
+    let map, directionsService, directionsRenderer, elevationService, currentPos;
+    let navSteps = [], navStepIndex = 0, navigationWatchId = null, navMarker = null;
+    const consumptionRate = 50, vehicleMass = 150, g = 9.81;
 
-    // พารามิเตอร์สำหรับประเมินพลังงาน
-    const consumptionRate = 50;   // Wh per km (ปรับได้ตามรุ่นมอเตอร์ไซค์)
-    const batteryCapacity = 2000; // Wh (สมมติความจุแบต ≈ 2 kWh)
+    // LocalStorage keys
+    const KEY_HISTORY = 'ev_gps_tripHistory';
+    const KEY_FAVS    = 'ev_gps_favorites';
+
+    // Load/store helpers
+    function loadHistory() { return JSON.parse(localStorage.getItem(KEY_HISTORY) || '[]'); }
+    function loadFavs()    { return JSON.parse(localStorage.getItem(KEY_FAVS)    || '[]'); }
+
+    function addHistory(entry) {
+      const h = loadHistory(); h.unshift(entry);
+      if (h.length > 20) h.pop();
+      localStorage.setItem(KEY_HISTORY, JSON.stringify(h));
+    }
+
+    function saveFavorite() {
+      const name = prompt('ตั้งชื่อเส้นทางโปรด:', 'เส้นทางโปรด');
+      if (!name) return;
+      const favs = loadFavs();
+      favs.push({ name, destination: currentPosDest, info: lastTripInfo });
+      localStorage.setItem(KEY_FAVS, JSON.stringify(favs));
+      alert('บันทึกสำเร็จ');
+      renderFavs();
+    }
+
+    function toggleHistory(){
+      document.getElementById('historyModal').classList.toggle('hidden');
+      if (!document.getElementById('historyModal').classList.contains('hidden')) renderHistory();
+    }
+    function toggleFavorites(){
+      document.getElementById('favModal').classList.toggle('hidden');
+      if (!document.getElementById('favModal').classList.contains('hidden')) renderFavs();
+    }
+
+    function renderHistory() {
+      const ul = document.getElementById('historyList'); ul.innerHTML = '';
+      loadHistory().forEach((e,i) => {
+        const li = document.createElement('li');
+        li.className = 'p-2 border rounded cursor-pointer hover:bg-gray-100';
+        li.textContent = `${e.time} → ${e.destination} (${e.distance}, ${e.duration})`;
+        li.onclick = () => {
+          document.getElementById('destination').value = e.destination;
+          route(); toggleHistory();
+        };
+        ul.appendChild(li);
+      });
+    }
+
+    function renderFavs() {
+      const ul = document.getElementById('favList'); ul.innerHTML = '';
+      loadFavs().forEach((f,i) => {
+        const li = document.createElement('li');
+        li.className = 'p-2 border rounded flex justify-between items-center hover:bg-yellow-50';
+        li.innerHTML = `<span class="cursor-pointer">${f.name} → ${f.destination}</span>
+                        <button class="text-red-500">🗑</button>`;
+        li.firstChild.onclick = () => {
+          document.getElementById('destination').value = f.destination;
+          route(); toggleFavorites();
+        };
+        li.querySelector('button').onclick = () => {
+          const arr = loadFavs(); arr.splice(i,1);
+          localStorage.setItem(KEY_FAVS, JSON.stringify(arr));
+          renderFavs();
+        };
+        ul.appendChild(li);
+      });
+    }
+
+    let currentPosDest = '', lastTripInfo = {};
+
+    function speakThai(text){
+      if (!('speechSynthesis' in window)) return;
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='th-TH';
+      const v=speechSynthesis.getVoices().find(v=>v.lang.startsWith('th'));
+      if (v) u.voice=v;
+      u.rate=1; speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }
 
     function initMap() {
       directionsService = new google.maps.DirectionsService();
-      directionsRenderer = new google.maps.DirectionsRenderer({
-        suppressMarkers: false
-      });
-
-      map = new google.maps.Map(document.getElementById("map"), {
-        zoom: 15,
-        center: { lat: 13.7563, lng: 100.5018 }, // Bangkok default
+      directionsRenderer = new google.maps.DirectionsRenderer({ suppressMarkers: false });
+      elevationService  = new google.maps.ElevationService();
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15, center: { lat: 13.7563, lng: 100.5018 }
       });
       directionsRenderer.setMap(map);
+      document.getElementById("power").textContent = `อัตราใช้พลังฯ: ${consumptionRate} Wh/km`;
 
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          currentPos = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          };
-          map.setCenter(currentPos);
-          new google.maps.Marker({
-            position: currentPos,
-            map,
-            title: "ตำแหน่งปัจจุบัน"
-          });
-        },
-        () => alert("ไม่สามารถเข้าถึงตำแหน่งของคุณได้")
-      );
+      navigator.geolocation.getCurrentPosition(pos => {
+        currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        map.setCenter(currentPos);
+        new google.maps.Marker({
+          position: currentPos, map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE, scale:8,
+            fillColor:"#ef4444", fillOpacity:1,
+            strokeColor:"#ffffff", strokeWeight:2
+          }
+        });
+      }, ()=>alert("ไม่สามารถเข้าถึงตำแหน่งได้"));
     }
 
-    function route() {
-      const dest = document.getElementById("destination").value;
-      if (!dest || !currentPos) {
-        return alert("กรุณากรอกปลายทางและอนุญาตตำแหน่ง");
-      }
+    function route(){
+      const dest = document.getElementById('destination').value;
+      if (!dest||!currentPos) return alert("กรุณากรอกปลายทางและอนุญาตตำแหน่ง");
+      currentPosDest = dest;
+      const cap = parseFloat(document.getElementById('capacityInput').value);
+      document.getElementById('capacity').textContent = `ความจุแบตฯ: ${cap} Wh`;
 
-      const request = {
-        origin: currentPos,
-        destination: dest,
-        travelMode: google.maps.TravelMode.DRIVING,
-      };
+      directionsService.route({
+        origin: currentPos, destination: dest,
+        travelMode: google.maps.TravelMode.DRIVING
+      }, (res,status)=>{
+        if(status==='OK'){
+          directionsRenderer.setDirections(res);
+          const leg = res.routes[0].legs[0];
+          navSteps = leg.steps.map(s=>({
+            dist: s.distance.text,
+            end: s.end_location,
+            instr: s.instructions.replace(/<[^>]+>/g,''), 
+            maneuver: s.maneuver||'straight'
+          }));
+          navStepIndex = 0; showInstruction();
 
-      directionsService.route(request, (result, status) => {
-        if (status === "OK") {
-          directionsRenderer.setDirections(result);
+          document.getElementById('distance').textContent = leg.distance.text;
+          document.getElementById('duration').textContent = leg.duration.text;
 
-          // ข้อมูลจากผลลัพธ์
-          const leg = result.routes[0].legs[0];
-          const distText = leg.distance.text;       // เช่น "12.3 กม."
-          const durText  = leg.duration.text;       // เช่น "18 นาที"
-          const distVal  = leg.distance.value / 1000; // value เป็นเมตร → แปลงเป็น กม.
+          const path = res.routes[0].overview_path;
+          elevationService.getElevationAlongPath({ path, samples: Math.min(path.length,128) },
+            (elevs,elevStatus)=>{
+              let gain=0;
+              if(elevStatus==='OK'){
+                for(let i=1;i<elevs.length;i++){
+                  const d=elevs[i].elevation-elevs[i-1].elevation;
+                  if(d>0) gain+=d;
+                }
+              }
+              document.getElementById('elevationGain').textContent = `${gain.toFixed(1)} ม.`;
 
-          // คำนวณพลังงานโดยประมาณ
-          const energyWh = (distVal * consumptionRate).toFixed(0);
-          const percentUsed = ((energyWh / batteryCapacity) * 100).toFixed(0);
+              const distKm=leg.distance.value/1000;
+              const flatE=distKm*consumptionRate;
+              const elevE=(vehicleMass*g*gain)/3600;
+              const totalE=flatE+elevE;
+              const rem=cap-totalE;
+              const pct=(rem/cap)*100;
 
-          // อัปเดต UI
-          document.getElementById("distance").textContent = `ระยะทาง: ${distText}`;
-          document.getElementById("duration").textContent = `เวลาเดินทาง: ${durText}`;
-          document.getElementById("energy").textContent  =
-            `คาดการณ์ใช้พลังงาน: ${energyWh} Wh (~${percentUsed}% ของความจุแบต)`;
+              document.getElementById('energy').textContent    = `${totalE.toFixed(0)} Wh`;
+              document.getElementById('remaining').textContent = `${rem.toFixed(0)} Wh (~${pct.toFixed(0)}%)`;
+              document.getElementById('gaugeFill').style.width = `${Math.max(0,Math.min(100,pct))}%`;
 
-        } else {
-          alert("ไม่สามารถนำทางไปยังจุดหมายได้: " + status);
-        }
+              // บันทึกประวัติ
+              const time = new Date().toLocaleString();
+              lastTripInfo = { distance: leg.distance.text, duration: leg.duration.text };
+              addHistory({ time, destination: dest, distance: leg.distance.text, duration: leg.duration.text });
+            }
+          );
+
+        } else alert('ไม่สามารถนำทางได้: '+status);
       });
     }
+
+    function showInstruction(){
+      if(!navSteps.length) return;
+      const s = navSteps[navStepIndex];
+      const arrowMap = { 'turn-left':'↰','turn-right':'↱','straight':'↑' };
+      document.getElementById('instructionPanel').classList.remove('hidden');
+      document.getElementById('instrArrow').textContent = arrowMap[s.maneuver]||'↑';
+      document.getElementById('instrText').textContent  = s.instr;
+      document.getElementById('instrDist').textContent  = s.dist;
+      speakThai(s.instr);
+    }
+
+    function computeDistance(lat1,lng1,lat2,lng2){
+      const toRad=x=>x*Math.PI/180,R=6371;
+      const dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+      const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+      return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    }
+
+    function startNavigation(){
+      if(navigationWatchId||!navSteps.length) return;
+      navigationWatchId = navigator.geolocation.watchPosition(pos=>{
+        currentPos={ lat:pos.coords.latitude, lng:pos.coords.longitude };
+        map.panTo(currentPos);
+        if(!navMarker){
+          navMarker=new google.maps.Marker({
+            position:currentPos, map,
+            icon:{ path:google.maps.SymbolPath.CIRCLE, scale:8,
+                   fillColor:"#ef4444", fillOpacity:1,
+                   strokeColor:"#fff", strokeWeight:2 }
+          });
+        } else {
+          navMarker.setPosition(currentPos);
+        }
+        const s = navSteps[navStepIndex];
+        const d = computeDistance(currentPos.lat, currentPos.lng, s.end.lat(), s.end.lng());
+        if(d<0.03 && navStepIndex<navSteps.length-1){
+          navStepIndex++; showInstruction();
+        }
+      }, err=>alert('ติดตามตำแหน่งไม่สำเร็จ'), { enableHighAccuracy:true, maximumAge:0, timeout:5000 });
+    }
+
+    function stopNavigation(){
+      if(navigationWatchId){
+        navigator.geolocation.clearWatch(navigationWatchId);
+        navigationWatchId=null;
+        if(navMarker){ navMarker.setMap(null); navMarker=null; }
+      }
+      if('speechSynthesis' in window) speechSynthesis.cancel();
+    }
+
+    // Register service worker
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(()=>console.log('SW registered'))
+        .catch(e=>console.error('SW failed:', e));
+    }
+
+    window.initMap = initMap;
   </script>
 
-  <!-- ใส่ API Key ของคุณตรงนี้ -->
+  <!-- Google Maps APIs -->
   <script async defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDtMa027IkCT5ROLA1lbCg__zMAlUQg__Y&callback=initMap">
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDtMa027IkCT5ROLA1lbCg__zMAlUQg__Y&libraries=elevation&callback=initMap">
   </script>
-
 </body>
 </html>
