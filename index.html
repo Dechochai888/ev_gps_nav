@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EV GPS นำทางมอเตอร์ไซค์ไฟฟ้า</title>
+  <style>
+    body, html {
+      margin: 0; padding: 0; height: 100%; font-family: sans-serif;
+    }
+    #map {
+      height: 85%; width: 100%;
+    }
+    #controls {
+      padding: 10px; background: #ffffff;
+      box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
+      position: sticky; top: 0; z-index: 999;
+    }
+    input, button {
+      padding: 8px; font-size: 16px; margin-right: 5px;
+    }
+    button {
+      background: #00b894; border: none; color: white;
+      border-radius: 4px; cursor: pointer;
+    }
+    button:hover {
+      background: #019875;
+    }
+    #info {
+      margin-top: 8px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    #info span {
+      display: block;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="controls">
+    <input id="destination" type="text" placeholder="กรอกปลายทาง เช่น CentralWorld" />
+    <button onclick="route()">นำทาง</button>
+
+    <div id="info">
+      <span id="distance">ระยะทาง: –</span>
+      <span id="duration">เวลาเดินทาง: –</span>
+      <span id="energy">คาดการณ์พลังงาน: –</span>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script>
+    let map, directionsService, directionsRenderer, currentPos;
+
+    // พารามิเตอร์สำหรับประเมินพลังงาน
+    const consumptionRate = 50;   // Wh per km (ปรับได้ตามรุ่นมอเตอร์ไซค์)
+    const batteryCapacity = 2000; // Wh (สมมติความจุแบต ≈ 2 kWh)
+
+    function initMap() {
+      directionsService = new google.maps.DirectionsService();
+      directionsRenderer = new google.maps.DirectionsRenderer({
+        suppressMarkers: false
+      });
+
+      map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 15,
+        center: { lat: 13.7563, lng: 100.5018 }, // Bangkok default
+      });
+      directionsRenderer.setMap(map);
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          currentPos = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          };
+          map.setCenter(currentPos);
+          new google.maps.Marker({
+            position: currentPos,
+            map,
+            title: "ตำแหน่งปัจจุบัน"
+          });
+        },
+        () => alert("ไม่สามารถเข้าถึงตำแหน่งของคุณได้")
+      );
+    }
+
+    function route() {
+      const dest = document.getElementById("destination").value;
+      if (!dest || !currentPos) {
+        return alert("กรุณากรอกปลายทางและอนุญาตตำแหน่ง");
+      }
+
+      const request = {
+        origin: currentPos,
+        destination: dest,
+        travelMode: google.maps.TravelMode.DRIVING,
+      };
+
+      directionsService.route(request, (result, status) => {
+        if (status === "OK") {
+          directionsRenderer.setDirections(result);
+
+          // ข้อมูลจากผลลัพธ์
+          const leg = result.routes[0].legs[0];
+          const distText = leg.distance.text;       // เช่น "12.3 กม."
+          const durText  = leg.duration.text;       // เช่น "18 นาที"
+          const distVal  = leg.distance.value / 1000; // value เป็นเมตร → แปลงเป็น กม.
+
+          // คำนวณพลังงานโดยประมาณ
+          const energyWh = (distVal * consumptionRate).toFixed(0);
+          const percentUsed = ((energyWh / batteryCapacity) * 100).toFixed(0);
+
+          // อัปเดต UI
+          document.getElementById("distance").textContent = `ระยะทาง: ${distText}`;
+          document.getElementById("duration").textContent = `เวลาเดินทาง: ${durText}`;
+          document.getElementById("energy").textContent  =
+            `คาดการณ์ใช้พลังงาน: ${energyWh} Wh (~${percentUsed}% ของความจุแบต)`;
+
+        } else {
+          alert("ไม่สามารถนำทางไปยังจุดหมายได้: " + status);
+        }
+      });
+    }
+  </script>
+
+  <!-- ใส่ API Key ของคุณตรงนี้ -->
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBdDcvdy8DMLa8CaZDD4ss66aQDP05mt5o&callback=initMap">
+  </script>
+
+</body>
+</html>
